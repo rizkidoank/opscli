@@ -18,7 +18,8 @@ setup(
     keywords='devops operational sysadmin',
     install_requires=[
         'boto3',
-        'tabulate'
+        'tabulate',
+        'jira'
     ],
     python_requires='>=2.7, >=3.3.*, <4',
     entry_points={
