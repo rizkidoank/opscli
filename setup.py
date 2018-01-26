@@ -19,7 +19,8 @@ setup(
     install_requires=[
         'boto3',
         'tabulate',
-        'jira'
+        'jira',
+        'ipaddress'
     ],
     python_requires='>=2.7, >=3.3.*, <4',
     entry_points={
