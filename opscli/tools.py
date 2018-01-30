@@ -128,19 +128,21 @@ def describe_connectivity(args):
     jira_tools.read_csv(args.ticket_id, args.detailed)
 
 
-
 def get_group_id(group_name):
-    client = boto3.client('ec2')
-    res = client.describe_security_groups(
-        Filters=[
-            {
-                'Name': 'group-name',
-                'Values': [group_name]
-            },
-        ],
-    )
+    try:
+        client = boto3.client('ec2')
+        res = client.describe_security_groups(
+            Filters=[
+                {
+                    'Name': 'group-name',
+                    'Values': [group_name]
+                },
+            ],
+        )
 
-    return res['SecurityGroups'][0]['GroupId']
+        return res['SecurityGroups'][0]['GroupId']
+    except Exception as e:
+        print(e)
 
 
 def parse_group_rules(group_id):
@@ -189,15 +191,18 @@ def parse_group_rules(group_id):
 
 
 def describe_security_group(args):
-    if args.group_id and args.group_name:
-        pass
-    elif args.group_id:
-        group_rules = parse_group_rules(args.group_id)
-    elif args.group_name:
-        group_id = get_group_id(args.group_name)
-        group_rules = parse_group_rules(group_id)
-    else:
-        pass
+    try:
+        if args.group_id and args.group_name:
+            pass
+        elif args.group_id:
+            group_rules = parse_group_rules(args.group_id)
+        elif args.group_name:
+            group_id = get_group_id(args.group_name)
+            group_rules = parse_group_rules(group_id)
+        else:
+            pass
+    except Exception as e:
+        print(e)
 
     print("Group ID         : {}".format(group_rules['group_id']))
     print("Group Name       : {}".format(group_rules['group_name']))
