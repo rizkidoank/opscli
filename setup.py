@@ -20,9 +20,10 @@ setup(
         'boto3',
         'tabulate',
         'jira',
-        'ipaddress'
+        'ipaddress',
+        'pbr'
     ],
-    python_requires='>=2.7, >=3.3.*, <4',
+    python_requires='>=2.7,<4',
     entry_points={
         'console_scripts': [
             'opscli=opscli.main:main'

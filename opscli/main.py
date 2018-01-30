@@ -8,7 +8,7 @@ def main():
     try:
         args.func(args)
     except Exception as e:
-        parser.print_usage()
+        print(e)
 
 
 if __name__ == '__main__':

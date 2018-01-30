@@ -199,9 +199,9 @@ def describe_security_group(args):
     else:
         pass
 
-    print("Group ID         : ", group_rules['group_id'])
-    print("Group Name       : ", group_rules['group_name'])
-    print("Rules Count      : ", len(group_rules['rules']))
+    print("Group ID         : {}".format(group_rules['group_id']))
+    print("Group Name       : {}".format(group_rules['group_name']))
+    print("Rules Count      : {}".format(len(group_rules['rules'])))
     if args.detailed:
         headers = ["Source", "From Port", "To Port", "Protocol", "Type"]
         print(tabulate(group_rules['rules'], headers, tablefmt="grid"))
