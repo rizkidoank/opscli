@@ -1,5 +1,5 @@
 import argparse
-from opscli.tools import describe_connectivity, describe_security_group
+from opscli.tools import describe_connectivity, describe_security_group, download_connectivity_file, generate_tf_group_rules
 from opscli.configure import configure
 
 def create_parser():
@@ -21,5 +21,14 @@ def create_parser():
     describe_secgroup_parser.add_argument('--group-name')
     describe_secgroup_parser.add_argument('--detailed', action='store_true')
     describe_secgroup_parser.set_defaults(func=describe_security_group)
+
+    download_connectivity_parser = subparser.add_parser('download-connectivity')
+    download_connectivity_parser.add_argument('--ticket-id')
+    download_connectivity_parser.set_defaults(func=download_connectivity_file)
+
+    generate_group_rules_parser = subparser.add_parser('generate-rules')
+    generate_group_rules_parser.add_argument('--group-name')
+    generate_group_rules_parser.add_argument('--input-file')
+    generate_group_rules_parser.set_defaults(func=generate_tf_group_rules)
 
     return parser

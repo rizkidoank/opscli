@@ -1,10 +1,12 @@
 import csv
 from io import BytesIO
 from ipaddress import ip_network
-
 from tabulate import tabulate
 from jira import JIRA
+import os
+import jinja2
 import boto3
+import tempfile
 
 from opscli.configure import read_config
 
@@ -27,11 +29,19 @@ class JiraTools:
             print("Authentication Error")
 
     def get_most_recent_attacment(self, ticket_id):
-        attachments = self.client.issue(id=ticket_id).fields.attachment
-        sorted_attachments = sorted([attachment.raw['created'] for attachment in attachments])
-        for attachment in attachments:
-            if attachment.raw['created'] == sorted_attachments[len(sorted_attachments) - 1]:
-                return attachment
+        try:
+            attachments = self.client.issue(id=ticket_id).fields.attachment
+            tmp = []
+            for attachment in attachments:
+                if str(attachment.filename).split('.')[-1] == 'csv':
+                    tmp.append(attachment)
+
+            sorted_attachments = sorted([attachment.raw['created'] for attachment in tmp])
+            for attachment in tmp:
+                if attachment.raw['created'] == sorted_attachments[len(sorted_attachments) - 1]:
+                    return attachment
+        except Exception as e:
+            print(e)
 
     def read_csv(self, ticket_id, detailed=False):
         try:
@@ -118,16 +128,6 @@ class JiraTools:
         #             print('Legacy connection {0} {1}'.format(direction, group['GroupName']))
 
 
-def describe_connectivity(args):
-    conf = read_config()
-    jira_tools = JiraTools(
-        conf['jira']['server'],
-        conf['jira']['project'],
-        conf['jira']['username'],
-        conf['jira']['password'])
-    jira_tools.read_csv(args.ticket_id, args.detailed)
-
-
 def get_group_id(group_name):
     try:
         client = boto3.client('ec2')
@@ -189,6 +189,35 @@ def parse_group_rules(group_id):
         'rules': tmp
     }
 
+def download_connectivity_file(args):
+    conf = read_config()
+    jira_tools = JiraTools(
+        conf['jira']['server'],
+        conf['jira']['project'],
+        conf['jira']['username'],
+        conf['jira']['password'])
+    conn_file = jira_tools.get_most_recent_attacment(args.ticket_id)
+    csv_data = BytesIO(conn_file.get()).getvalue().decode('utf-8').splitlines()
+    csv_data[0] = 'source,destination,from_port,to_port,protocol'
+    for i in range(len(csv_data)):
+        csv_data[i] = csv_data[i].lower()
+
+    for row in csv_data:
+        print(row)
+    with open('connectivity.csv', 'w') as out_file:
+        writer = csv.writer(out_file)
+        out_file.close()
+
+
+def describe_connectivity(args):
+    conf = read_config()
+    jira_tools = JiraTools(
+        conf['jira']['server'],
+        conf['jira']['project'],
+        conf['jira']['username'],
+        conf['jira']['password'])
+    jira_tools.read_csv(args.ticket_id, args.detailed)
+
 
 def describe_security_group(args):
     try:
@@ -210,3 +239,32 @@ def describe_security_group(args):
     if args.detailed:
         headers = ["Source", "From Port", "To Port", "Protocol", "Type"]
         print(tabulate(group_rules['rules'], headers, tablefmt="grid"))
+
+
+def render(template, context):
+    path, filename = os.path.split(template)
+    env = jinja2.Environment(loader=jinja2.FileSystemLoader(path or './'))
+    return env.get_template(filename).render(context)
+
+
+def generate_tf_group_rules(args):
+    pass
+
+    rules = []
+    group_name = args.group_name
+    group_id = get_group_id(group_name)
+    with open(args.input_file) as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            if row['Destination'] == group_name:
+                row['sourceId'] = get_group_id(row['source'])
+                row['destinationId'] = group_id
+                rules.append(row)
+
+    context = {
+        'group_id': get_group_id(group_name),
+        'rules': rules
+    }
+
+    result = render('templates/security_group_rule.jinja2', context)
+    print(result)

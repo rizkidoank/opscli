@@ -1,0 +1,13 @@
+{% for rule in rules %}
+    {%- if rule['DestinationId'] == group_id -%}
+resource "aws_security_group_rule" "{{ rule['Destination'] }}-{{ loop.index }}" {
+    from_port                   = {{ rule['from_port'] }}
+    to_port                     = {{ rule['to_port'] }}
+    protocol                    = "{{ rule['protocol'] }}"
+    security_group_id           = "{{ rule['DestinationId'] }}"
+    source_security_group_id    = "{{ rule['SourceId'] }}" # {{ rule['Source'] }}
+    type                        = "ingress"
+    description                 = "ingress from {{ rule['Source'] }} to {{ rule['Destination'] }}"
+}{{ "\n" }}
+    {%- endif -%}
+{% endfor %}

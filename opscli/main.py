@@ -1,6 +1,4 @@
-import os
 from opscli.parser import create_parser
-
 
 def main():
     parser = create_parser()
