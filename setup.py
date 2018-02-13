@@ -25,8 +25,9 @@ setup(
         'jinja2'
     ],
     package_data={
-       'opscli': ['security_group_rule.jinja2'],
+       'opscli': ['templates/*.jinja2'],
     },
+    include_package_data=True,
     python_requires='>=2.7,<4',
     entry_points={
         'console_scripts': [
