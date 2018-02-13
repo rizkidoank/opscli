@@ -21,7 +21,8 @@ setup(
         'tabulate',
         'jira',
         'ipaddress',
-        'pbr'
+        'pbr',
+        'jinja2'
     ],
     python_requires='>=2.7,<4',
     entry_points={
