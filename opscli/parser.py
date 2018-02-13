@@ -1,5 +1,5 @@
 import argparse
-from opscli.tools import describe_connectivity, describe_security_group, download_connectivity_file, generate_tf_group_rules
+from opscli.tools import *
 from opscli.configure import configure
 
 def create_parser():
@@ -31,4 +31,7 @@ def create_parser():
     generate_group_rules_parser.add_argument('--input-file')
     generate_group_rules_parser.set_defaults(func=generate_tf_group_rules)
 
+    connectivity_test_parser = subparser.add_parser('connectivity-smoke-test')
+    connectivity_test_parser.add_argument('--input-file')
+    connectivity_test_parser.set_defaults(func=connectivity_smoke_test)
     return parser
