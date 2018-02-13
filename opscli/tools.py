@@ -6,8 +6,7 @@ from jira import JIRA
 import os
 import jinja2
 import boto3
-import tempfile
-
+import opscli
 from opscli.configure import read_config
 
 
@@ -129,20 +128,17 @@ class JiraTools:
 
 
 def get_group_id(group_name):
-    try:
-        client = boto3.client('ec2')
-        res = client.describe_security_groups(
-            Filters=[
-                {
-                    'Name': 'group-name',
-                    'Values': [group_name]
-                },
-            ],
-        )
+    client = boto3.client('ec2')
+    res = client.describe_security_groups(
+        Filters=[
+            {
+                'Name': 'group-name',
+                'Values': [group_name]
+            },
+        ],
+    )
 
-        return res['SecurityGroups'][0]['GroupId']
-    except Exception as e:
-        print(e)
+    return res['SecurityGroups'][0]['GroupId']
 
 
 def parse_group_rules(group_id):
@@ -189,6 +185,7 @@ def parse_group_rules(group_id):
         'rules': tmp
     }
 
+
 def download_connectivity_file(args):
     conf = read_config()
     jira_tools = JiraTools(
@@ -197,15 +194,10 @@ def download_connectivity_file(args):
         conf['jira']['username'],
         conf['jira']['password'])
     conn_file = jira_tools.get_most_recent_attacment(args.ticket_id)
-    csv_data = BytesIO(conn_file.get()).getvalue().decode('utf-8').splitlines()
+    csv_data = BytesIO(conn_file.get()).getvalue().decode('utf-8').lower().splitlines()
     csv_data[0] = 'source,destination,from_port,to_port,protocol'
-    for i in range(len(csv_data)):
-        csv_data[i] = csv_data[i].lower()
-
-    for row in csv_data:
-        print(row)
     with open('connectivity.csv', 'w') as out_file:
-        writer = csv.writer(out_file)
+        out_file.write("\n".join(csv_data))
         out_file.close()
 
 
@@ -248,23 +240,44 @@ def render(template, context):
 
 
 def generate_tf_group_rules(args):
-    pass
-
+    rules_template = os.path.dirname(opscli.__file__) + '/templates/security_group_rule.jinja2'
+    try:
+        group_id = get_group_id(args.group_name)
+        new_group = False
+    except:
+        group_id = str('${{aws_security_group.{}.id}}'.format(args.group_name))
+        new_group = True
     rules = []
-    group_name = args.group_name
-    group_id = get_group_id(group_name)
     with open(args.input_file) as f:
         reader = csv.DictReader(f)
         for row in reader:
-            if row['Destination'] == group_name:
-                row['sourceId'] = get_group_id(row['source'])
-                row['destinationId'] = group_id
+            if row['destination'] == args.group_name:
+                try:
+                    row['source'] = {
+                        'group_id': get_group_id(row['source']),
+                        'group_name': row['source']
+                    }
+                except:
+                    row['source'] = {
+                        'group_id': str('${{aws_security_group.{}.id}}'.format(row['source'])),
+                        'group_name': row['source']
+                    }
+                try:
+                    row['destination'] = {
+                        'group_id': get_group_id(row['destination']),
+                        'group_name': row['destination']
+                    }
+                except:
+                    row['destination'] = {
+                        'group_id': str('${{aws_security_group.{}.id}}'.format(row['destination'])),
+                        'group_name': row['destination']
+                    }
                 rules.append(row)
-
-    context = {
-        'group_id': get_group_id(group_name),
-        'rules': rules
-    }
-
-    result = render('templates/security_group_rule.jinja2', context)
-    print(result)
+        context = {
+            'group_id': group_id,
+            'group_name': args.group_name,
+            'rules': rules,
+            'new_group': new_group
+        }
+        result = render(rules_template, context)
+        print(result)

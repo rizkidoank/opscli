@@ -1,13 +1,53 @@
+{%- if new_group == True -%}
+resource "aws_security_group" "{{ group_name }}" {
+    name        = "{{ group_name }}"
+    description = "{{ group_name }} security group"
+    vpc_id      = "${local.vpc_id}"
+
+    tags = {
+
+    }
+}
+resource "aws_security_group_rule" "{{ group_name }}-http-all" {
+  type              = "egress"
+  from_port         = "80"
+  to_port           = "80"
+  protocol          = "tcp"
+  security_group_id = "{{ group_id }}"
+  cidr_blocks       = ["0.0.0.0/0"]
+}
+
+resource "aws_security_group_rule" "{{ group_name }}-https-all" {
+  type              = "egress"
+  from_port         = "443"
+  to_port           = "443"
+  protocol          = "tcp"
+  security_group_id = "{{ group_id }}"
+  cidr_blocks       = ["0.0.0.0/0"]
+}
+
+resource "aws_security_group_rule" "{{ group_name }}-all-vpc" {
+  type              = "egress"
+  from_port         = "0"
+  to_port           = "0"
+  protocol          = "-1"
+  security_group_id = "{{ group_id }}"
+  cidr_blocks       = ["172.20.0.0/16"]
+}
+{{ "\n" }}
+{%- endif -%}
+
 {% for rule in rules %}
-    {%- if rule['DestinationId'] == group_id -%}
-resource "aws_security_group_rule" "{{ rule['Destination'] }}-{{ loop.index }}" {
+    {%- if rule['destination']['group_id'] == group_id -%}
+resource "aws_security_group_rule" "{{ rule['destination']['group_name'] }}-from-{{ rule['source']['group_name'] }}" {
     from_port                   = {{ rule['from_port'] }}
     to_port                     = {{ rule['to_port'] }}
     protocol                    = "{{ rule['protocol'] }}"
-    security_group_id           = "{{ rule['DestinationId'] }}"
-    source_security_group_id    = "{{ rule['SourceId'] }}" # {{ rule['Source'] }}
+    security_group_id           = "{{ rule['destination']['group_id'] }}"
+    source_security_group_id    = "{{ rule['source']['group_id'] }}"
     type                        = "ingress"
-    description                 = "ingress from {{ rule['Source'] }} to {{ rule['Destination'] }}"
-}{{ "\n" }}
+    description                 = "ingress from {{ rule['source']['group_name'] }} to {{ rule['destination']['group_name'] }}"
+}
+    {{ "\n" }}
     {%- endif -%}
 {% endfor %}
