@@ -1,16 +1,10 @@
-import csv
-from StringIO import StringIO
-from pprint import pprint
-
 from botocore.exceptions import ClientError
 import os
 import jinja2
-import boto3
-import opscli
 from opscli.configure import read_config
 from jira_tools import JiraTools
 from opscli.csv_processor import *
-from opscli.aws_tools import get_group_name, get_group_id
+from opscli.aws_tools import get_group_id
 import logging
 
 logging.basicConfig(level=logging.ERROR)
@@ -82,5 +76,5 @@ def connectivity_smoke_test(args):
     client = auth_jira()
     csv_file = client.get_latest_connectivity_file(args.ticket_id).get()
 
-    source_group = get_unique_groups_by_direction(csv_file, 'source')
-    destination_group = get_unique_groups_by_direction(csv_file, 'destination')
+    # source_group = get_unique_groups_by_direction(csv_file, 'source')
+    # destination_group = get_unique_groups_by_direction(csv_file, 'destination')
