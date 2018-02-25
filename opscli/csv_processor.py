@@ -2,7 +2,6 @@ import csv
 from StringIO import StringIO
 from csv import reader, DictReader
 from io import BytesIO
-from pprint import pprint
 
 from ipaddress import ip_network
 from tabulate import tabulate
@@ -43,17 +42,22 @@ def is_cidr(input_string):
     except ValueError:
         return False
 
+def get_columns(csv_data, column_name):
+    reader = DictReader(csv_data)
+    return [row[column_name] for row in reader]
+
+def remove_cidrs_from_list(data):
+    result = []
+    for value in data:
+        if not is_cidr(value):
+            result.append(value)
+    return result
 
 def connectivity_details(csv_data):
-    print('Connectivity Details:')
-    csv_data = DictReader(csv_data)
-    group_names = set()
+    group_names = set(
+        get_columns(csv_data, 'source') + get_columns(csv_data, 'destination'))
 
-    for row in csv_data:
-        for direction in ['source', 'destination']:
-            if not is_cidr(row[direction]):
-                group_names.add(row[direction])
-
+    group_names = remove_cidrs_from_list(group_names)
     existing_groups = describe_existing_groups(group_names)
 
     total_new_groups = abs(len(group_names) - len(existing_groups))
