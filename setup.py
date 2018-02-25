@@ -10,10 +10,10 @@ setup(
     author_email='rizki@rizkidoank.com',
     description='operational cli tools',
     classifiers=[
-        'Development Status :: 3 - Alpha',
+        'Development Status :: 2 - Alpha',
         'Intended Audience :: Developers',
         'Topic :: System :: Systems Administration',
-        'Programming Language :: Python :: 3',
+        'Programming Language :: Python :: 2',
     ],
     keywords='devops operational sysadmin',
     install_requires=[
@@ -21,14 +21,14 @@ setup(
         'tabulate',
         'jira',
         'ipaddress',
-        'pbr',
-        'jinja2'
+        'jinja2',
+        'pbr', 'botocore'
     ],
     package_data={
        'opscli': ['templates/*.jinja2'],
     },
     include_package_data=True,
-    python_requires='>=2.7,<4',
+    python_requires='>=2.7,<3',
     entry_points={
         'console_scripts': [
             'opscli=opscli.main:main'

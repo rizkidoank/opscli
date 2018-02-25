@@ -1,144 +1,32 @@
 import csv
+from StringIO import StringIO
 from io import BytesIO
-from ipaddress import ip_network
+
+from botocore.exceptions import ClientError
 from tabulate import tabulate
-from jira import JIRA
 import os
 import jinja2
 import boto3
 import opscli
 from opscli.configure import read_config
+from jira_tools import JiraTools
+from opscli.csv_processor import *
+from opscli.aws_tools import get_group_name, get_group_id
+import logging
+
+logging.basicConfig(level=logging.ERROR)
+logger = logging.getLogger(__name__)
 
 
-class JiraTools:
-    def __init__(self, server, project, username, password):
-        self.session = None
-        self.username = username
-        self.password = password
-        self.server_url = server
-        self.project = project
-        self.client = self.auth()
-
-    def auth(self):
-        try:
-            client = JIRA(server=self.server_url, basic_auth=(self.username, self.password), max_retries=1)
-            client.project(self.project)
-            return client
-        except:
-            print("Authentication Error")
-
-    def get_most_recent_attacment(self, ticket_id):
-        try:
-            attachments = self.client.issue(id=ticket_id).fields.attachment
-            tmp = []
-            for attachment in attachments:
-                if str(attachment.filename).split('.')[-1] == 'csv':
-                    tmp.append(attachment)
-
-            sorted_attachments = sorted([attachment.raw['created'] for attachment in tmp])
-            for attachment in tmp:
-                if attachment.raw['created'] == sorted_attachments[len(sorted_attachments) - 1]:
-                    return attachment
-        except Exception as e:
-            print(e)
-
-    def read_csv(self, ticket_id, detailed=False):
-        try:
-            # get all attachments in issue
-            attachment = self.get_most_recent_attacment(ticket_id)
-            # download attachment to memory
-            attachment = attachment.get()
-            # decode the downloaded object and create csv
-            csv_data = BytesIO(attachment).getvalue().decode('utf-8').splitlines()
-            # create list from csv to be printed by tabulate
-            table = list(csv.reader(csv_data))
-            print(tabulate(table, tablefmt="grid"))
-            # if detailed view requested, show the details
-            if detailed:
-                self.connectivity_details(csv_data)
-
-        except Exception as e:
-            print(e)
-
-    def describe_existing_security_groups(self, group_names):
-        client = boto3.client('ec2')
-        return client.describe_security_groups(
-            Filters=[
-                {
-                    'Name': 'group-name',
-                    'Values': list(group_names)
-                }
-            ]
-        )['SecurityGroups']
-
-    def remove_cidr(self, group_names):
-        tmp = set()
-        for group in group_names:
-            try:
-                # check if string is network adress
-                ip_network(group)
-            except:
-                tmp.add(group)
-        return tmp
-
-    def connectivity_details(self, csv_data):
-        print('\nConnectivity Details:')
-
-        # read connectivity csv to dictionary
-        reader = csv.DictReader(csv_data)
-
-        # group name for filter
-        group_names = {'src': set(), 'dst': set()}
-
-        # get existing security groups from csv
-        # using try-except because sometimes its 'Source' instead of 'SourceId'
-        for row in reader:
-            try:
-                group_names['src'].add(row['Source'])
-            except:
-                group_names['src'].add(row['SourceId'])
-            group_names['dst'].add(row['Destination'])
-
-        # data cleanup, removing all cidr value if any
-        group_names['src'] = self.remove_cidr(group_names['src'])
-        group_names['dst'] = self.remove_cidr(group_names['dst'])
-
-        # collect all existing security groups, send request to aws api
-        existing_secgroups = {'from': self.describe_existing_security_groups(group_names['src']),
-                              'to': self.describe_existing_security_groups(group_names['dst'])}
-
-        # total of existing security groups for both inbound or outbound
-        total_existing_groups = len(existing_secgroups['to'] + existing_secgroups['from'])
-
-        # total of new security groups to creates
-        total_group_names = abs(len(group_names['dst'].union(group_names['src'])) - total_existing_groups)
-
-        # Show how many security groups to be created or updated
-        # For any existing security groups, it will shown also the id
-        print('Create {0} security group(s)'.format(total_group_names))
-        print('Update {0} security group(s)'.format(total_existing_groups))
-        for group in existing_secgroups['to'] + existing_secgroups['from']:
-            print('  - {0} ({1})'.format(group['GroupName'], group['GroupId']))
-
-        # # List legacy connection either in or out
-        # for direction in existing_secgroups.keys():
-        #     for group in existing_secgroups[direction]:
-        #         if group['GroupName'] in LEGACY_CONNECTIONS:
-        #             print('Legacy connection {0} {1}'.format(direction, group['GroupName']))
-
-
-def get_group_id(group_name):
-    client = boto3.client('ec2')
-    res = client.describe_security_groups(
-        Filters=[
-            {
-                'Name': 'group-name',
-                'Values': [group_name]
-            },
-        ],
+def auth_jira():
+    conf = read_config()
+    client = JiraTools()
+    client.auth(
+        conf['jira']['server'],
+        (conf['jira']['username'], conf['jira']['password']),
+        conf['jira']['project']
     )
-
-    return res['SecurityGroups'][0]['GroupId']
+    return client
 
 
 def parse_group_rules(group_id):
@@ -171,7 +59,7 @@ def parse_group_rules(group_id):
 
             for group in rule['UserIdGroupPairs']:
                 group_id = group['GroupId']
-                group_name = ec2.SecurityGroup(group_id).group_name
+                group_name = get_group_name(group_id)
                 tmp.append([
                     "{} ({})".format(group_name, group['GroupId']),
                     rule['FromPort'],
@@ -187,14 +75,10 @@ def parse_group_rules(group_id):
 
 
 def download_connectivity_file(args):
-    conf = read_config()
-    jira_tools = JiraTools(
-        conf['jira']['server'],
-        conf['jira']['project'],
-        conf['jira']['username'],
-        conf['jira']['password'])
-    conn_file = jira_tools.get_most_recent_attacment(args.ticket_id)
-    csv_data = BytesIO(conn_file.get()).getvalue().decode('utf-8').lower().splitlines()
+    client = auth_jira()
+    conn_file = client.get_latest_connectivity_file(args.ticket_id).get()
+    csv_data = BytesIO(conn_file).getvalue()\
+        .decode('utf-8').lower().splitlines()
     csv_data[0] = 'source,destination,from_port,to_port,protocol'
     with open('connectivity.csv', 'w') as out_file:
         out_file.write("\n".join(csv_data))
@@ -202,28 +86,28 @@ def download_connectivity_file(args):
 
 
 def describe_connectivity(args):
-    conf = read_config()
-    jira_tools = JiraTools(
-        conf['jira']['server'],
-        conf['jira']['project'],
-        conf['jira']['username'],
-        conf['jira']['password'])
-    jira_tools.read_csv(args.ticket_id, args.detailed)
+    client = auth_jira()
+    csv_file = client.get_latest_connectivity_file(args.ticket_id).get()
+    read_connectivity_file(csv_file, args.detailed)
 
 
 def describe_security_group(args):
     try:
         if args.group_id and args.group_name:
-            pass
+            logger.error('should only use group id or group name')
         elif args.group_id:
             group_rules = parse_group_rules(args.group_id)
         elif args.group_name:
             group_id = get_group_id(args.group_name)
             group_rules = parse_group_rules(group_id)
         else:
-            pass
+            logger.error('invalid argument')
+    except TypeError:
+        logger.error('group not found', exc_info=True)
+    except ClientError as err:
+        logger.error(err.message)
     except Exception as e:
-        print(e)
+        logger.error(e, exc_info=True)
 
     print("Group ID         : {}".format(group_rules['group_id']))
     print("Group Name       : {}".format(group_rules['group_name']))
@@ -240,47 +124,53 @@ def render(template, context):
 
 
 def generate_tf_group_rules(args):
-    rules_template = os.path.dirname(opscli.__file__) + '/templates/security_group_rule.jinja2'
+    rules_template = os.path.dirname(opscli.__file__) + \
+                     '/templates/security_group_rule.jinja2'
     try:
         group_id = get_group_id(args.group_name)
         new_group = False
-    except:
+    except IndexError:
         group_id = str('${{aws_security_group.{}.id}}'.format(args.group_name))
         new_group = True
     rules = []
-    with open(args.input_file) as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            if row['destination'] == args.group_name:
-                try:
-                    row['source'] = {
-                        'group_id': get_group_id(row['source']),
-                        'group_name': row['source']
-                    }
-                except:
-                    row['source'] = {
-                        'group_id': str('${{aws_security_group.{}.id}}'.format(row['source'])),
-                        'group_name': row['source']
-                    }
-                try:
-                    row['destination'] = {
-                        'group_id': get_group_id(row['destination']),
-                        'group_name': row['destination']
-                    }
-                except:
-                    row['destination'] = {
-                        'group_id': str('${{aws_security_group.{}.id}}'.format(row['destination'])),
-                        'group_name': row['destination']
-                    }
-                rules.append(row)
-        context = {
-            'group_id': group_id,
-            'group_name': args.group_name,
-            'rules': rules,
-            'new_group': new_group
-        }
-        result = render(rules_template, context)
-        print(result)
+    client = auth_jira()
+    csv_file = client.get_latest_connectivity_file(args.ticket_id).get()
+    csv_file = StringIO(cleanup_connectivity_csv(csv_file))
+    reader = csv.DictReader(csv_file)
+    for row in reader:
+        if row['Destination'] == args.group_name:
+            try:
+                row['Source'] = {
+                    'group_id': get_group_id(row['Source']),
+                    'group_name': row['Source']
+                }
+            except IndexError:
+                row['source'] = {
+                    'group_id': str(
+                        '${{aws_security_group.{}.id}}'.format(row['Source'])),
+                    'group_name': row['Source']
+                }
+            try:
+                row['Destination'] = {
+                    'group_id': get_group_id(row['Destination']),
+                    'group_name': row['Destination']
+                }
+            except IndexError:
+                row['Destination'] = {
+                    'group_id': str(
+                        '${{aws_security_group.{}.id}}'.format(
+                            row['Destination'])),
+                    'group_name': row['Destination']
+                }
+            rules.append(row)
+    context = {
+        'group_id': group_id,
+        'group_name': args.group_name,
+        'rules': rules,
+        'new_group': new_group
+    }
+    result = render(rules_template, context)
+    print(result)
 
 
 def connectivity_smoke_test(args):
@@ -315,7 +205,7 @@ def connectivity_smoke_test(args):
         input_file.__next__()
 
         rules = []
-        header = ['source', 'destination', 'from_port', 'to_port', 'protocol', 'rule_exist']
+        header = CONNECTIVITY_HEADER.splitlines(',').append('rule_exist')
         for row in reader:
             exists = False
             ingress = None
@@ -324,7 +214,8 @@ def connectivity_smoke_test(args):
                     ingress = group['IpPermissions']
             if ingress:
                 for rule in ingress:
-                    if (rule['FromPort'] == int(row['from_port'])) and (rule['ToPort'] == int(row['to_port'])):
+                    if (rule['FromPort'] == int(row['from_port'])) \
+                            and (rule['ToPort'] == int(row['to_port'])):
                         src_id = None
                         for src in srcs:
                             if src['GroupName'] == row['source']:
@@ -338,7 +229,7 @@ def connectivity_smoke_test(args):
                 row['destination'],
                 row['from_port'],
                 row['to_port'],
-                row['protocol'],
+                row['proto'],
                 exists
             ])
         print('Rules count : {}'.format(rules_count))

@@ -5,10 +5,27 @@ resource "aws_security_group" "{{ group_name }}" {
     vpc_id      = "${local.vpc_id}"
 
     tags = {
-
+        Name          = "{{ group_name }}"
+        ProductDomain = "{{ group_name[0:3] }}"
+        Service       = "{{ group_name.split('-')[0] }}"
+        Description   = "security group for {{ group_name }}"
     }
 }
-resource "aws_security_group_rule" "{{ group_name }}-http-all" {
+{% if group_name.split('-')[1] == 'lbint' or group_name.split('-')[1] == 'lbext' %}
+resource "aws_security_group_rule" "{{ group_name }}-to-{{ group_name.split('-')[0] }}-app" {
+    from_port                   = "${local.service_port}"
+    to_port                     = "${local.service_port}"
+    protocol                    = "tcp"
+    security_group_id           = "${aws_security_group.{{ group_name }}"
+    source_security_group_id    = "${aws_security_group.{{ group_name.split('-')[0] }}-app}"
+    type                        = "egress"
+    description                 = "egress from {{ group_name }} to {{ group_name.split('-')[0] }}-app"
+}
+{{ "\n" }}
+{% endif %}
+
+{% if group_name.split('-')[1] == 'app' %}
+resource "aws_security_group_rule" "{{ group_name }}-to-all-80" {
   type              = "egress"
   from_port         = "80"
   to_port           = "80"
@@ -17,7 +34,7 @@ resource "aws_security_group_rule" "{{ group_name }}-http-all" {
   cidr_blocks       = ["0.0.0.0/0"]
 }
 
-resource "aws_security_group_rule" "{{ group_name }}-https-all" {
+resource "aws_security_group_rule" "{{ group_name }}-to-all-443" {
   type              = "egress"
   from_port         = "443"
   to_port           = "443"
@@ -26,7 +43,7 @@ resource "aws_security_group_rule" "{{ group_name }}-https-all" {
   cidr_blocks       = ["0.0.0.0/0"]
 }
 
-resource "aws_security_group_rule" "{{ group_name }}-all-vpc" {
+resource "aws_security_group_rule" "{{ group_name }}-to-vpc-all" {
   type              = "egress"
   from_port         = "0"
   to_port           = "0"
@@ -35,19 +52,20 @@ resource "aws_security_group_rule" "{{ group_name }}-all-vpc" {
   cidr_blocks       = ["172.20.0.0/16"]
 }
 {{ "\n" }}
+{% endif %}
 {%- endif -%}
 
 {% for rule in rules %}
-    {%- if rule['destination']['group_id'] == group_id -%}
-resource "aws_security_group_rule" "{{ rule['destination']['group_name'] }}-from-{{ rule['source']['group_name'] }}" {
+{%- if rule['Destination']['group_id'] == group_id -%}
+resource "aws_security_group_rule" "{{ rule['Destination']['group_name'] }}-from-{{ rule['Source']['group_name'] }}" {
     from_port                   = {{ rule['from_port'] }}
     to_port                     = {{ rule['to_port'] }}
-    protocol                    = "{{ rule['protocol'] }}"
-    security_group_id           = "{{ rule['destination']['group_id'] }}"
-    source_security_group_id    = "{{ rule['source']['group_id'] }}"
+    protocol                    = "{{ rule['proto'] }}"
+    security_group_id           = "{{ rule['Destination']['group_id'] }}"
+    source_security_group_id    = "{{ rule['Source']['group_id'] }}"
     type                        = "ingress"
-    description                 = "ingress from {{ rule['source']['group_name'] }} to {{ rule['destination']['group_name'] }}"
+    description                 = "ingress from {{ rule['Source']['group_name'] }} to {{ rule['Destination']['group_name'] }}"
 }
-    {{ "\n" }}
-    {%- endif -%}
+{{ "\n" }}
+{%- endif -%}
 {% endfor %}
