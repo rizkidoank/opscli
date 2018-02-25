@@ -1,3 +1,5 @@
+import csv
+from StringIO import StringIO
 from csv import reader, DictReader
 from io import BytesIO
 
@@ -68,3 +70,10 @@ def connectivity_details(csv_data):
     print('Update {0} security group(s)'.format(total_groups))
     for group in existing_secgroups['to'] + existing_secgroups['from']:
         print('  - {0} ({1})'.format(group['GroupName'], group['GroupId']))
+
+
+def get_unique_groups_by_direction(csv_file, direction):
+    csv_file = StringIO(cleanup_connectivity_csv(csv_file))
+    reader = csv.DictReader(csv_file)
+    groups = set([row[direction] for row in reader])
+    return groups

@@ -1,9 +1,8 @@
 import csv
 from StringIO import StringIO
-from io import BytesIO
+from pprint import pprint
 
 from botocore.exceptions import ClientError
-from tabulate import tabulate
 import os
 import jinja2
 import boto3
@@ -77,7 +76,7 @@ def parse_group_rules(group_id):
 def download_connectivity_file(args):
     client = auth_jira()
     conn_file = client.get_latest_connectivity_file(args.ticket_id).get()
-    csv_data = BytesIO(conn_file).getvalue()\
+    csv_data = BytesIO(conn_file).getvalue() \
         .decode('utf-8').lower().splitlines()
     csv_data[0] = 'source,destination,from_port,to_port,protocol'
     with open('connectivity.csv', 'w') as out_file:
@@ -126,114 +125,9 @@ def render(template, context):
     return env.get_template(filename).render(context)
 
 
-def generate_tf_group_rules(args):
-    rules_template = os.path.dirname(opscli.__file__) + \
-                     '/templates/security_group_rule.jinja2'
-    try:
-        group_id = get_group_id(args.group_name)
-        new_group = False
-    except IndexError:
-        group_id = str('${{aws_security_group.{}.id}}'.format(args.group_name))
-        new_group = True
-    rules = []
+def connectivity_smoke_test(args):
     client = auth_jira()
     csv_file = client.get_latest_connectivity_file(args.ticket_id).get()
-    csv_file = StringIO(cleanup_connectivity_csv(csv_file))
-    reader = csv.DictReader(csv_file)
-    for row in reader:
-        if row['Destination'] == args.group_name:
-            try:
-                row['Source'] = {
-                    'group_id': get_group_id(row['Source']),
-                    'group_name': row['Source']
-                }
-            except IndexError:
-                row['source'] = {
-                    'group_id': str(
-                        '${{aws_security_group.{}.id}}'.format(row['Source'])),
-                    'group_name': row['Source']
-                }
-            try:
-                row['Destination'] = {
-                    'group_id': get_group_id(row['Destination']),
-                    'group_name': row['Destination']
-                }
-            except IndexError:
-                row['Destination'] = {
-                    'group_id': str(
-                        '${{aws_security_group.{}.id}}'.format(
-                            row['Destination'])),
-                    'group_name': row['Destination']
-                }
-            rules.append(row)
-    context = {
-        'group_id': group_id,
-        'group_name': args.group_name,
-        'rules': rules,
-        'new_group': new_group
-    }
-    result = render(rules_template, context)
-    print(result)
 
-
-def connectivity_smoke_test(args):
-    destination_group = set()
-    source_group = set()
-    rules_count = 0
-    with open(args.input_file) as input_file:
-        reader = csv.DictReader(input_file)
-        for row in reader:
-            source_group.add(row['source'])
-            destination_group.add(row['destination'])
-            rules_count += 1
-
-        client = boto3.client('ec2')
-        srcs = client.describe_security_groups(
-            Filters=[
-                {
-                    'Name': 'group-name',
-                    'Values': list(source_group)
-                },
-            ]
-        )['SecurityGroups']
-        dests = client.describe_security_groups(
-            Filters=[
-                {
-                    'Name': 'group-name',
-                    'Values': list(destination_group)
-                },
-            ]
-        )['SecurityGroups']
-        input_file.seek(0)
-        input_file.__next__()
-
-        rules = []
-        header = CONNECTIVITY_HEADER.splitlines(',').append('rule_exist')
-        for row in reader:
-            exists = False
-            ingress = None
-            for group in dests:
-                if group['GroupName'] == row['destination']:
-                    ingress = group['IpPermissions']
-            if ingress:
-                for rule in ingress:
-                    if (rule['FromPort'] == int(row['from_port'])) \
-                            and (rule['ToPort'] == int(row['to_port'])):
-                        src_id = None
-                        for src in srcs:
-                            if src['GroupName'] == row['source']:
-                                src_id = src['GroupId']
-
-                        for group in rule['UserIdGroupPairs']:
-                            if group['GroupId'] == src_id:
-                                exists = True
-            rules.append([
-                row['source'],
-                row['destination'],
-                row['from_port'],
-                row['to_port'],
-                row['proto'],
-                exists
-            ])
-        print('Rules count : {}'.format(rules_count))
-        print(tabulate(rules, header, tablefmt='psql'))
+    source_group = get_unique_groups_by_direction(csv_file, 'source')
+    destination_group = get_unique_groups_by_direction(csv_file, 'destination')

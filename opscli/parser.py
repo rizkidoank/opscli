@@ -45,7 +45,7 @@ def create_parser():
     connectivity_test_parser = subparser.add_parser(
         'connectivity-smoke-test')
     connectivity_test_parser.add_argument(
-        '--input-file')
+        '--ticket-id')
     connectivity_test_parser.set_defaults(
         func=connectivity_smoke_test)
     return parser
