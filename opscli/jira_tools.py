@@ -14,7 +14,7 @@ class JiraTools(object):
         try:
             self.client = JIRA(server, basic_auth=basic_auth)
             self.client.project(project)
-        except JIRAError, err:
+        except JIRAError as err:
             logger.error(err.text, exc_info=True)
 
     def get_latest_connectivity_file(self, ticket_id):
@@ -22,5 +22,5 @@ class JiraTools(object):
             items = self.client.issue(ticket_id).fields.attachment
             csv_files = [item for item in items if item.mimeType == 'text/csv']
             return csv_files[0]
-        except JIRAError, err:
+        except JIRAError as err:
             logger.error(err.text, exc_info=True)
