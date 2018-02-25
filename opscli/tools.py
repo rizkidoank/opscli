@@ -99,8 +99,6 @@ def describe_security_group(args):
         elif args.group_name:
             group_id = get_group_id(args.group_name)
             group_rules = parse_group_rules(group_id)
-        else:
-            logger.error('invalid argument')
     except TypeError:
         logger.error('group not found', exc_info=True)
     except ClientError as err:
