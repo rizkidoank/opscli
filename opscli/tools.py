@@ -119,7 +119,10 @@ def describe_security_group(args):
 
 def render(template, context):
     path, filename = os.path.split(template)
-    env = jinja2.Environment(loader=jinja2.FileSystemLoader(path or './'))
+    env = jinja2.Environment(
+        loader=jinja2.FileSystemLoader(path or './'),
+        autoescape=True
+    )
     return env.get_template(filename).render(context)
 
 

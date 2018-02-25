@@ -6,7 +6,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-class JiraTools:
+class JiraTools(object):
     def __init__(self):
         self.client = None
 
