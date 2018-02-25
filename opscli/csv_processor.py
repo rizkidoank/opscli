@@ -2,10 +2,11 @@ import csv
 from StringIO import StringIO
 from csv import reader, DictReader
 from io import BytesIO
+from pprint import pprint
 
 from ipaddress import ip_network
 from tabulate import tabulate
-from aws_tools import describe_existing_security_groups
+from aws_tools import describe_existing_groups
 import logging
 
 logging.basicConfig(level=logging.ERROR)
@@ -46,29 +47,19 @@ def is_cidr(input_string):
 def connectivity_details(csv_data):
     print('Connectivity Details:')
     csv_data = DictReader(csv_data)
-    group_names = {
-        'src': set(),
-        'dst': set()
-    }
+    group_names = set()
 
     for row in csv_data:
-        if not is_cidr(row['source']):
-            group_names['src'].add(row['source'])
-        if not is_cidr(row['destination']):
-            group_names['dst'].add(row['destination'])
+        for direction in ['source', 'destination']:
+            if not is_cidr(row[direction]):
+                group_names.add(row[direction])
 
-    existing_secgroups = {
-        'from': describe_existing_security_groups(group_names['src']),
-        'to': describe_existing_security_groups(group_names['dst'])
-    }
+    existing_groups = describe_existing_groups(group_names)
 
-    total_groups = len(existing_secgroups['to'] + existing_secgroups['from'])
-    total_new_groups = abs(
-        len(group_names['dst'].union(group_names['src'])) - total_groups)
-
+    total_new_groups = abs(len(group_names) - len(existing_groups))
     print('Create {0} security group(s)'.format(total_new_groups))
-    print('Update {0} security group(s)'.format(total_groups))
-    for group in existing_secgroups['to'] + existing_secgroups['from']:
+    print('Update {0} security group(s)'.format(len(existing_groups)))
+    for group in existing_groups:
         print('  - {0} ({1})'.format(group['GroupName'], group['GroupId']))
 
 

@@ -35,12 +35,12 @@ def create_parser():
     download_connectivity_parser.set_defaults(
         func=download_connectivity_file)
 
-    generate_group_rules_parser = subparser.add_parser(
-        'generate-rules')
-    generate_group_rules_parser.add_argument('--group-name')
-    generate_group_rules_parser.add_argument('--ticket-id')
-    generate_group_rules_parser.set_defaults(
-        func=generate_tf_group_rules)
+    # generate_group_rules_parser = subparser.add_parser(
+    #     'generate-rules')
+    # generate_group_rules_parser.add_argument('--group-name')
+    # generate_group_rules_parser.add_argument('--ticket-id')
+    # generate_group_rules_parser.set_defaults(
+    #     func=generate_tf_group_rules)
 
     connectivity_test_parser = subparser.add_parser(
         'connectivity-smoke-test')

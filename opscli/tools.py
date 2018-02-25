@@ -28,51 +28,6 @@ def auth_jira():
     return client
 
 
-def parse_group_rules(group_id):
-    ec2 = boto3.resource('ec2')
-    security_group = ec2.SecurityGroup(group_id)
-
-    tmp = []
-
-    group_rules = {
-        'ingress': security_group.ip_permissions,
-        'egress': security_group.ip_permissions_egress
-    }
-
-    for rule_type, rules in group_rules.items():
-        for rule in rules:
-            if rule['IpProtocol'] == '-1':
-                rule['FromPort'] = 'all'
-                rule['ToPort'] = 'all'
-
-            ips = ['IpRanges', 'Ipv6Ranges']
-            for version in ips:
-                for ip in rule[version]:
-                    tmp.append([
-                        ip['CidrIp'],
-                        rule['FromPort'],
-                        rule['ToPort'],
-                        rule['IpProtocol'],
-                        rule_type
-                    ])
-
-            for group in rule['UserIdGroupPairs']:
-                group_id = group['GroupId']
-                group_name = get_group_name(group_id)
-                tmp.append([
-                    "{} ({})".format(group_name, group['GroupId']),
-                    rule['FromPort'],
-                    rule['ToPort'],
-                    rule['IpProtocol'],
-                    rule_type])
-
-    return {
-        'group_id': security_group.group_id,
-        'group_name': security_group.group_name,
-        'rules': tmp
-    }
-
-
 def download_connectivity_file(args):
     client = auth_jira()
     conn_file = client.get_latest_connectivity_file(args.ticket_id).get()

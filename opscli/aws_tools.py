@@ -1,9 +1,9 @@
 import boto3
 
 
-def describe_existing_security_groups(group_names):
+def get_groups_by_names(group_names):
     client = boto3.client('ec2')
-    groups_by_name = client.describe_security_groups(
+    groups = client.describe_security_groups(
         Filters=[
             {
                 'Name': 'group-name',
@@ -11,18 +11,25 @@ def describe_existing_security_groups(group_names):
             }
         ]
     )['SecurityGroups']
+    return groups
 
-    groups_by_tag_name = client.describe_security_groups(
+
+def get_groups_by_tag_name(group_names):
+    client = boto3.client('ec2')
+    groups = client.describe_security_groups(
         Filters=[
             {
-                'Name': 'tag:Name',
+                'Name': 'group-name',
                 'Values': list(group_names)
             }
         ]
     )['SecurityGroups']
+    return groups
 
-    groups = groups_by_name + groups_by_tag_name
 
+def describe_existing_groups(group_names):
+    groups = get_groups_by_names(group_names) \
+             + get_groups_by_tag_name(group_names)
     return {group['GroupId']: group for group in groups}.values()
 
 
