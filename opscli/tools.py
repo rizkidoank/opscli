@@ -8,9 +8,11 @@ import jinja2
 import boto3
 import opscli
 from opscli.configure import read_config
+import json
 
 
 class JiraTools:
+
     def __init__(self, server, project, username, password):
         self.session = None
         self.username = username
@@ -21,7 +23,8 @@ class JiraTools:
 
     def auth(self):
         try:
-            client = JIRA(server=self.server_url, basic_auth=(self.username, self.password), max_retries=1)
+            client = JIRA(server=self.server_url, basic_auth=(
+                self.username, self.password), max_retries=1)
             client.project(self.project)
             return client
         except:
@@ -35,7 +38,8 @@ class JiraTools:
                 if str(attachment.filename).split('.')[-1] == 'csv':
                     tmp.append(attachment)
 
-            sorted_attachments = sorted([attachment.raw['created'] for attachment in tmp])
+            sorted_attachments = sorted(
+                [attachment.raw['created'] for attachment in tmp])
             for attachment in tmp:
                 if attachment.raw['created'] == sorted_attachments[len(sorted_attachments) - 1]:
                     return attachment
@@ -49,7 +53,8 @@ class JiraTools:
             # download attachment to memory
             attachment = attachment.get()
             # decode the downloaded object and create csv
-            csv_data = BytesIO(attachment).getvalue().decode('utf-8').splitlines()
+            csv_data = BytesIO(attachment).getvalue().decode(
+                'utf-8').splitlines()
             # create list from csv to be printed by tabulate
             table = list(csv.reader(csv_data))
             print(tabulate(table, tablefmt="grid"))
@@ -108,10 +113,12 @@ class JiraTools:
                               'to': self.describe_existing_security_groups(group_names['dst'])}
 
         # total of existing security groups for both inbound or outbound
-        total_existing_groups = len(existing_secgroups['to'] + existing_secgroups['from'])
+        total_existing_groups = len(
+            existing_secgroups['to'] + existing_secgroups['from'])
 
         # total of new security groups to creates
-        total_group_names = abs(len(group_names['dst'].union(group_names['src'])) - total_existing_groups)
+        total_group_names = abs(len(group_names['dst'].union(
+            group_names['src'])) - total_existing_groups)
 
         # Show how many security groups to be created or updated
         # For any existing security groups, it will shown also the id
@@ -124,7 +131,8 @@ class JiraTools:
         # for direction in existing_secgroups.keys():
         #     for group in existing_secgroups[direction]:
         #         if group['GroupName'] in LEGACY_CONNECTIONS:
-        #             print('Legacy connection {0} {1}'.format(direction, group['GroupName']))
+        # print('Legacy connection {0} {1}'.format(direction,
+        # group['GroupName']))
 
 
 def get_group_id(group_name):
@@ -194,7 +202,8 @@ def download_connectivity_file(args):
         conf['jira']['username'],
         conf['jira']['password'])
     conn_file = jira_tools.get_most_recent_attacment(args.ticket_id)
-    csv_data = BytesIO(conn_file.get()).getvalue().decode('utf-8').lower().splitlines()
+    csv_data = BytesIO(conn_file.get()).getvalue().decode(
+        'utf-8').lower().splitlines()
     csv_data[0] = 'source,destination,from_port,to_port,protocol'
     with open('connectivity.csv', 'w') as out_file:
         out_file.write("\n".join(csv_data))
@@ -240,7 +249,8 @@ def render(template, context):
 
 
 def generate_tf_group_rules(args):
-    rules_template = os.path.dirname(opscli.__file__) + '/templates/security_group_rule.jinja2'
+    rules_template = os.path.dirname(
+        opscli.__file__) + '/templates/security_group_rule.jinja2'
     try:
         group_id = get_group_id(args.group_name)
         new_group = False
@@ -315,7 +325,8 @@ def connectivity_smoke_test(args):
         input_file.__next__()
 
         rules = []
-        header = ['source', 'destination', 'from_port', 'to_port', 'protocol', 'rule_exist']
+        header = ['source', 'destination', 'from_port',
+                  'to_port', 'protocol', 'rule_exist']
         for row in reader:
             exists = False
             ingress = None
@@ -343,3 +354,54 @@ def connectivity_smoke_test(args):
             ])
         print('Rules count : {}'.format(rules_count))
         print(tabulate(rules, header, tablefmt='psql'))
+
+
+def count_cidrs(attrs):
+    count = 0
+    for attr in attrs:
+        attr = str(attr).split('.')
+        if attr[0] == 'cidr_blocks' and attr[1] != "#":
+            count = count + 1
+    return count
+
+
+def describe_group(group_id):
+    try:
+        ec2 = boto3.resource('ec2')
+        security_group = ec2.SecurityGroup(group_id)
+        if security_group.group_name:
+            return security_group
+    except Exception:
+        session = boto3.Session(profile_name='si-data')
+        client = session.resource('ec2')
+        security_group = client.SecurityGroup(group_id)
+        return security_group
+
+
+def import_group_rules(args):
+    rules_template = os.path.dirname(
+        opscli.__file__) + '/templates/import_group_rules.jinja2'
+
+    path, filename = os.path.split(rules_template)
+    env = jinja2.Environment(loader=jinja2.FileSystemLoader(path or './'))
+    env.globals['describe_group'] = describe_group
+    STATE_FILE = os.getcwd() + "/terraform.tfstate"
+
+    if os.path.isfile(STATE_FILE):
+        with open(STATE_FILE, 'r') as f:
+            state_json = json.load(f)
+
+        resources = state_json['modules'][0]['resources']
+        for res_reff, res_data in resources.items():
+            res_type, res_name = str(res_reff).split('.')
+            if res_type == "aws_security_group_rule":
+                if res_data['primary']['attributes']['security_group_id'] == args.group_id:
+                    attrs = res_data['primary']['attributes']
+                    context = {
+                        'reference': res_name,
+                        'attr': attrs,
+                        'count_cidr': int(attrs['cidr_blocks.#'])
+                    }
+                    print(env.get_template(filename).render(context))
+    else:
+        print("Terraform state doesn't exist")
