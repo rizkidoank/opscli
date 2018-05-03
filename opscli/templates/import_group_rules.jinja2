@@ -1,0 +1,18 @@
+resource "aws_security_group_rule" "{{ reference }}" {
+    from_port                   = "{{ attr['from_port'] }}"
+    to_port                     = "{{ attr['to_port'] }}"
+    protocol                    = "{{ attr['protocol'] }}"
+    security_group_id           = "{{ attr['security_group_id'] }}"
+    type                        = "{{ attr['type'] }}"
+    {% if count_cidr == 0 -%}
+        source_security_group_id    = "{{ attr['source_security_group_id'] }}"
+        {% if attr['type'] == "ingress" -%}
+            description             = "{{ attr['type'] }} from {{ describe_group(attr['source_security_group_id']).group_name }} to {{ describe_group(attr['security_group_id']).group_name }}"
+        {% else -%}
+            description             = "{{ attr['type'] }} from {{ describe_group(attr['security_group_id']).group_name }} to {{ describe_group(attr['source_security_group_id']).group_name }}"
+        {% endif -%}
+    {% else -%}
+        cidr_blocks = ["{{ attr['cidr_blocks.0'] }}"]
+        description = "{{ attr['type'] }} from {{ attr['cidr_blocks.0'] }}"
+    {% endif -%}
+}
