@@ -5,7 +5,7 @@ opscli is ops cli :)
 ## Requirements
 
 - Python3
-- JIRA Username and Password. If you login using SSO, you can follow [How can I change or reset my my.atlassian.com password|https://confluence.atlassian.com/purchasing/how-can-i-change-or-reset-my-my-atlassian-com-password-321257579.html]
+- JIRA Username and Password. If you login using SSO, you can follow [How can I change or reset my my.atlassian.com password](https://confluence.atlassian.com/purchasing/how-can-i-change-or-reset-my-my-atlassian-com-password-321257579.html)
 
 ## Install opscli
 
